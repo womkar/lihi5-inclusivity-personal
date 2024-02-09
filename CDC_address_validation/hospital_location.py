@@ -92,7 +92,7 @@ def create_list(new_cdc, lihi5_list, CDC_2023):
 
     # now we have all hospitals that were mentioned in the LIHI 5 draft list. Creating a dataframe
     CDC_2024 = new_cdc.loc[new_cdc.ccn.isin(lihi5_list.prvdr_num), :]
-    CDC_2024 = CDC_2024.append(to_add)
+    CDC_2024 = pd.concat([CDC_2024, to_add], ignore_index=True)
 
     print("After processing: # of distinct CCN id's in LIHI 5: {}".format(lihi5_list.prvdr_num.nunique()))
     print("After processing: # of distinct CCN id's in CDC_2024: {}".format(CDC_2024.ccn.nunique()))
@@ -111,17 +111,85 @@ def find_distance(cor1, cor2):
         distance (float): distance between two coordinates
     """
 
-    return geodesic(cor1, cor2).meters if not (np.isnan(cor1).any() and np.isnan(cor2).any()) else np.nan
+    return geodesic(cor1, cor2).meters if not ((np.isnan(cor1).any()) or (np.isnan(cor2).any())) else np.nan
 
 
-def compare_campus():
+# def compare_hhs():
 
-    return
+#     return
 
 
-def compare_hhs():
+def compare_campus(CDC_2024):
+    """identify hospitals with less number of campuses and more number of campuses
 
-    return
+    Args:
+        slice (_type_): _description_
+    """
+    to_analyse = CDC_2024.loc[CDC_2024.hhs_id_discrepancy == 1, 'ccn'].unique()
+
+    lst1 = list()
+    lst2 = list()
+    for id in to_analyse:
+        slice = CDC_2024.loc[CDC_2024.ccn == id, :].copy()
+
+        new_hhs = slice.loc[slice.data_ == "new CDC", :]
+        old_hhs = slice.loc[slice.data_ == "old CDC", :]
+        both_hhs = slice.loc[slice.data_ == "both", :]
+
+        if new_hhs.shape[0] > 0:
+            # HHS-ID's that exist only in 2024 CDC 
+            # we have new campuses, check if the co-ordinates match with any other campuses in its system.
+            # we have observed a pattern that hospitals are being assigned new HHS-ID, but have the same address.
+            #   In such cases, we cannot consider them as new addresses, and have to actively avoid them for our analysis
+              
+            for hhs1 in new_hhs.hhs_id.unique():
+                cor1 = slice.loc[slice.hhs_id == hhs1, ["address_latitude", "address_longitude"]].values[0]
+                flag = 1
+                for hhs2 in both_hhs.hhs_id.unique():
+                    cor2 = slice.loc[slice.hhs_id == hhs2, ["address_latitude", "address_longitude"]].values[0]
+                    if find_distance(cor1, cor2) == 0:
+                        flag = 0
+                lst1.append([id, hhs1, flag])
+        elif old_hhs.shape[0] > 0:
+            # HHS_ID's that exist only in 2023 CDC
+            # we have discontinued campuses. check if the co-ordinates match with any other campuses in its system.
+            # we have observed a pattern that hospitals are being assigned new HHS-ID, but have the same address.
+            #   In such cases, we cannot consider them as discontinued, and have to actively avoid them for our analysis
+            for hhs1 in old_hhs.hhs_id.unique():
+                cor1 = slice.loc[slice.hhs_id == hhs1, ["address_latitude", "address_longitude"]].values[0]
+                flag = 1
+                for hhs2 in both_hhs.hhs_id.unique():
+                    cor2 = slice.loc[slice.hhs_id == hhs2, ["address_latitude", "address_longitude"]].values[0]
+                    if find_distance(cor1, cor2) == 0:
+                        flag = 0
+                lst2.append([id, hhs1, flag])
+                
+    x = pd.DataFrame(lst1, columns = ["ccn", "hhs_id", "new_campus_flag"])
+    CDC_2024 = CDC_2024.merge(x , on = ["ccn", "hhs_id"], how = "left")
+    CDC_2024['new_campus_flag'] = CDC_2024.new_campus_flag.fillna(0)
+
+    x = pd.DataFrame(lst2, columns = ["ccn", "hhs_id", "discontinued_campus_flag"])
+    CDC_2024 = CDC_2024.merge(x , on = ["ccn", "hhs_id"], how = "left")
+    CDC_2024['discontinued_campus_flag'] = CDC_2024.discontinued_campus_flag.fillna(0)
+
+    return CDC_2024
+
+def compute_between_CDC_distance(CDC_2024):
+
+    print("computing distance for common hospitals:")
+    common_records = CDC_2024.loc[CDC_2024.hhs_id.isin(CDC_2023.hhs_id), :]
+    not_common_records = CDC_2024.loc[~CDC_2024.hhs_id.isin(CDC_2023.hhs_id),:]
+    lst = list()
+    for id_ in common_records.hhs_id.unique():
+        cor1 = CDC_2024.loc[CDC_2024.hhs_id == id_, ["address_latitude", "address_longitude"]].values[0]
+        cor2 = CDC_2023.loc[CDC_2023.hhs_id == id_, ["address_latitude", "address_longitude"]].values[0]
+        distance = find_distance(cor1, cor2)
+        lst.append([id_, distance])
+
+    distance_df = pd.DataFrame(lst, columns = ["hhs_id","distance"])
+    CDC_2024 = pd.merge(CDC_2024, distance_df, how = 'left')
+
+    return CDC_2024
 
 
 def compare(CDC_2024, CDC_2023):
@@ -146,8 +214,8 @@ def compare(CDC_2024, CDC_2023):
     """
     
     # since we have a one to many mapping for CCN id, we will be using HHS_ID for this filtering
-    common_records = CDC_2024.loc[CDC_2024.ccn.isin(CDC_2023.ccn), :]
-    not_common_records = CDC_2024.loc[~CDC_2024.ccn.isin(CDC_2023.ccn),:]
+    common_records = CDC_2024.loc[CDC_2024.ccn.isin(CDC_2023.ccn), :].copy()
+    not_common_records = CDC_2024.loc[~CDC_2024.ccn.isin(CDC_2023.ccn),:].copy()
 
     print("# of common hospitals in CDC_2024 and LIHI 5: {}".format(common_records['ccn'].nunique()))
     print("# of hospitals that are new in CDC_2024: {}".format(not_common_records.ccn.nunique()))
@@ -156,7 +224,7 @@ def compare(CDC_2024, CDC_2023):
 
     lst = list()
     for id, new_group in common_records.groupby(by = ["ccn"]):
-        old_group = CDC_2023.loc[CDC_2023.ccn == id, :]
+        old_group = CDC_2023.loc[CDC_2023.ccn == id[0], :]
         x = pd.merge(new_group, old_group, on = ['hhs_id'], how = 'outer', indicator = True)
         different_values = x[x['_merge'] != 'both']
         if different_values.shape[0] == 0:
@@ -164,53 +232,42 @@ def compare(CDC_2024, CDC_2023):
             lst.append(new_group)
         else:
             # for both and left only
-            x = new_group.loc[new_group.hhs_id.isin(different_values.loc[different_values._merge != "right_only", 'hhs_id'])]
-            x = x.append(new_group.loc[new_group.ccn == id]).drop_duplicates()
+            x = CDC_2024.loc[CDC_2024.ccn == id[0]].copy()
             x['hhs_id_discrepancy'] = 0
             x.loc[x.hhs_id.isin(different_values.hhs_id), "hhs_id_discrepancy"] = 1
 
-
-            # for right only
-            y = CDC_2023.loc[CDC_2023.hhs_id.isin(different_values.loc[different_values._merge == "right_only", 'hhs_id'])]
+            # for right only - search by HHS-ID
+            y = CDC_2023.loc[CDC_2023.hhs_id.isin(different_values.loc[different_values._merge == "right_only", 'hhs_id'])].copy()
             y['hhs_id_discrepancy'] = 0
             y.loc[y.hhs_id.isin(different_values.hhs_id),"hhs_id_discrepancy"] = 1
             
-            x = pd.concat([x,y], ignore_index= True)
-            lst.append(x)
+            slice = pd.concat([x,y], ignore_index= True)
+            lst.append(slice)
 
     x = pd.concat(lst, ignore_index = True)
     not_common_records['hhs_id_discrepancy'] = 0
     CDC_2024 = pd.concat([x, not_common_records], ignore_index= True).drop_duplicates()
+    CDC_2024['data_'] = "none"
     CDC_2024.loc[CDC_2024.hhs_id_discrepancy == 0, 'data_'] = "both"
     CDC_2024.loc[(CDC_2024.hhs_id_discrepancy == 1) & (CDC_2024.data_year == 2024.0), 'data_'] = "new CDC"
     CDC_2024.loc[(CDC_2024.hhs_id_discrepancy == 1) & (CDC_2024.data_year != 2024.0), 'data_'] = "old CDC"
 
     # writing records that have a new campus or a campus shutdown: 247 CCN id's with a discrepency in hhs_id
     # CDC_2024.loc[CDC_2024.ccn.isin(CDC_2024.loc[CDC_2024.data_ != "both"].ccn)].to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\change_in_hospital_campus.csv", index = False)
-
-    
-
-    print("computing distance for common hospitals:")
-    common_records = CDC_2024.loc[CDC_2024.hhs_id.isin(CDC_2023.hhs_id), :]
-    not_common_records = CDC_2024.loc[~CDC_2024.hhs_id.isin(CDC_2023.hhs_id),:]
-    lst = list()
-    for id_ in common_records.hhs_id.unique():
-        cor1 = CDC_2024.loc[CDC_2024.hhs_id == id_, ["address_latitude", "address_longitude"]].values[0]
-        cor2 = CDC_2023.loc[CDC_2023.hhs_id == id_, ["address_latitude", "address_longitude"]].values[0]
-        distance = find_distance(cor1, cor2)
-        lst.append([id_, distance])
-
-    distance_df = pd.DataFrame(lst, columns = ["hhs_id","distance"])
-    CDC_2024 = pd.merge(CDC_2024, distance_df, how = 'left')
-
     # writing the file
     # CDC_2024.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv", index = False)
 
     return
 
+
 lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
 CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
-new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
-new_cdc = preProcess_newData(new_cdc)
-CDC_2024 = create_list(new_cdc, lihi5_list, CDC_2023)
-CDC_2024 = compare(CDC_2024, CDC_2023)
+# new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+# new_cdc = preProcess_newData(new_cdc)
+# CDC_2024 = create_list(new_cdc, lihi5_list, CDC_2023)
+# CDC_2024 = compare(CDC_2024, CDC_2023)
+# CDC_2024 = compute_between_CDC_distance(CDC_2024)
+
+CDC_2024 = pd.read_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
+CDC_2024 = compare_campus(CDC_2024)
+CDC_2024.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv", index = False)
