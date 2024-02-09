@@ -191,6 +191,22 @@ def compute_between_CDC_distance(CDC_2024):
 
     return CDC_2024
 
+def identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022):
+    """identify hospitals with more than 1000 distance, add 2023 CDC and 2022 ahd data to it
+
+    Args:
+        CDC_2024 (_type_): pandas dataframe
+        CDC_2023 (_type_): pandas dataframe
+        ahd_2022 (_type_): pandas dataframe
+
+    Returns:
+        _type_: pandas dataframe
+    """
+    CDC_processed = CDC_2024.loc[CDC_2024.distance > 1000, :]
+    CDC_processed = CDC_processed.merge(CDC_2023, on= ['ccn', 'hhs_id'], how = "left", suffixes = ["_CDC_2024", "_CDC_2023"])
+    CDC_processed = CDC_processed.merge(ahd_2022, left_on = "ccn" , right_on = "cms_certification_number", how = "left", suffixed = [None, "_ahd"])
+
+    return CDC_processed
 
 def compare(CDC_2024, CDC_2023):
     """This function first identifies hospitals that are present in both LIHI 5 and LIHI 4, then compares their addresses. (CDC with ref__lihi4_hhs_id)
@@ -257,17 +273,36 @@ def compare(CDC_2024, CDC_2023):
     # writing the file
     # CDC_2024.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv", index = False)
 
-    return
+    return CDC_2024
+
+def to_csv(df, path):
+    # Prepend dtypes to the top of df (from https://stackoverflow.com/a/43408736/7607701)
+    df.loc[-1] = df.dtypes
+    df.index = df.index + 1
+    df.sort_index(inplace=True)
+    # Then save it to a csv
+    df.to_csv(path, index=False)
+
+def read_csv(path):
+    # Read types first line of csv
+    dtypes = pd.read_csv(path, nrows=1).iloc[0].to_dict()
+    # Read the rest of the lines with the types from above
+    return pd.read_csv(path, dtype=dtypes, skiprows=[1])
 
 
 lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
+ahd_2022 = call_db('overuse', 'dat__2022ahd')
 CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
+
 # new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
 # new_cdc = preProcess_newData(new_cdc)
 # CDC_2024 = create_list(new_cdc, lihi5_list, CDC_2023)
 # CDC_2024 = compare(CDC_2024, CDC_2023)
 # CDC_2024 = compute_between_CDC_distance(CDC_2024)
+# CDC_2024 = compare_campus(CDC_2024)
+# to_csv(CDC_2024, r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
 
-CDC_2024 = pd.read_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
-CDC_2024 = compare_campus(CDC_2024)
-CDC_2024.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv", index = False)
+CDC_2024 = read_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
+CDC_processed = identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022)
+CDC_processed.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_anomalies.csv", index = False)
+CDC_2024
