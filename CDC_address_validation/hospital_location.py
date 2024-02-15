@@ -204,7 +204,7 @@ def identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022):
     """
     CDC_processed = CDC_2024.loc[CDC_2024.distance > 1000, :]
     CDC_processed = CDC_processed.merge(CDC_2023, on= ['ccn', 'hhs_id'], how = "left", suffixes = ["_CDC_2024", "_CDC_2023"])
-    CDC_processed = CDC_processed.merge(ahd_2022, left_on = "ccn" , right_on = "cms_certification_number", how = "left", suffixed = [None, "_ahd"])
+    CDC_processed = CDC_processed.merge(ahd_2022, left_on = "ccn" , right_on = "cms_certification_number", how = "left", suffixes = [None, "_ahd"])
 
     return CDC_processed
 
@@ -275,8 +275,33 @@ def compare(CDC_2024, CDC_2023):
 
     return CDC_2024
 
+def remove_duplicate_campuses(CDC_2024):
+
+    lst = list()
+    for ccn, new_group in CDC_2024.groupby(by = ['ccn']):
+        if new_group.shape[0] > 1:
+            # dist = pd.DataFrame(index = new_group.hhs_id.unique(), columns = new_group.hhs_id.unique())
+            dist = []
+            for i, campus_id_1 in enumerate(new_group.hhs_id.unique()):
+                cor1 = new_group.loc[new_group.hhs_id == campus_id_1,  ["address_latitude", "address_longitude"]].values[0]
+                for j, campus_id_2 in enumerate(new_group.hhs_id.unique()):
+                    if i < j:
+                        cor2 =  new_group.loc[new_group.hhs_id == campus_id_2,  ["address_latitude", "address_longitude"]].values[0]
+                        d = find_distance(cor1, cor2)
+                        if d == 0:
+                            d = 1
+                            dist.append([ccn[0], campus_id_2, d])
+                    # dist.loc[campus_id_1, campus_id_2] = d
+
+            if dist not in lst: 
+                lst.extend(dist)
+    df = pd.DataFrame(lst, columns = ['ccn', 'hhs_id', 'duplicate']).drop_duplicates()
+    CDC_2024 = CDC_2024.join(df, how = 'left', on = ['ccn', 'hhs_id'])
+    CDC_2024 = CDC_2024.drop_duplicates()
+    return
+
 def to_csv(df, path):
-    # Prepend dtypes to the top of df (from https://stackoverflow.com/a/43408736/7607701)
+    # Prepend dtypes to the top of df (from path)
     df.loc[-1] = df.dtypes
     df.index = df.index + 1
     df.sort_index(inplace=True)
@@ -293,9 +318,8 @@ def read_csv(path):
 lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
 ahd_2022 = call_db('overuse', 'dat__2022ahd')
 CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
-
-# new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
-# new_cdc = preProcess_newData(new_cdc)
+new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+new_cdc = preProcess_newData(new_cdc)
 # CDC_2024 = create_list(new_cdc, lihi5_list, CDC_2023)
 # CDC_2024 = compare(CDC_2024, CDC_2023)
 # CDC_2024 = compute_between_CDC_distance(CDC_2024)
@@ -303,6 +327,7 @@ CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
 # to_csv(CDC_2024, r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
 
 CDC_2024 = read_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024.csv")
+remove_duplicate_campuses(CDC_2024)
 CDC_processed = identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022)
 CDC_processed.to_csv(r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_anomalies.csv", index = False)
 CDC_2024
