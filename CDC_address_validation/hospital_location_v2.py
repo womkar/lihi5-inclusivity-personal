@@ -140,17 +140,36 @@ def read_csv(path):
     return pd.read_csv(path, dtype=dtypes, skiprows=[1])
 
 
+def process_cleaned_data(anomalies, CDC_2024):
+    anomalies = anomalies.loc[:, ['hhs_id','ccn', 'chosen_latitude', 'chosen_longitude']]
+    CDC_2024 = CDC_2024.merge(anomalies, on=['ccn','hhs_id'], how = 'left')
+    CDC_2024['chosen_longitude'] = CDC_2024['chosen_longitude'].fillna(CDC_2024['address_longitude'])
+    CDC_2024['chosen_latitude'] = CDC_2024['chosen_latitude'].fillna(CDC_2024['address_latitude'])
+    CDC_2024.drop(["address_longitude","address_latitude"],inplace=True,axis=1)
+    CDC_2024 = CDC_2024.rename(columns = {'chosen_longitude': 'address_longitude',
+                                          'chosen_latitude': 'address_latitude'})
+    return CDC_2024
+
+
 lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
-ahd_2022 = call_db('overuse', 'dat__2022ahd')
-CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
-CDC_2024 = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
-CDC_2024 = preProcess_newCDC(CDC_2024, lihi5_list)
-CDC_2024 = compute_between_CDC_distance(CDC_2024, CDC_2023)
+# ahd_2022 = call_db('overuse', 'dat__2022ahd')
+# CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
+# CDC_2024_anomalies = pd.read_excel(r'lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_anomalies.xlsx', converters={'ccn':str,'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+# CDC_2024 = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+# CDC_2024 = preProcess_newCDC(CDC_2024, lihi5_list)
+# CDC_2024 = compute_between_CDC_distance(CDC_2024, CDC_2023)
 # identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022)
-CDC_2024 = remove_duplicate_campuses(CDC_2024)
-to_csv(CDC_2024, r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_v2.csv")
+# CDC_2024 = remove_duplicate_campuses(CDC_2024)
+# to_csv(CDC_2024, r"lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_v2.csv")
 
 # remove_duplicate_campuses(CDC_2024)
 # CDC_processed = identify_anomalous_distances(CDC_2024, CDC_2023, ahd_2022)
 # 
 # CDC_2024
+
+
+CDC_2024_anomalies = pd.read_excel(r'lihi5-inclusivity-personal\CDC_address_validation\processed_data\CDC_2024_anomalies.xlsx', converters={'ccn':str,'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+CDC_2024 = pd.read_excel(r'lihi5-inclusivity-personal\CDC_address_validation\processed_data\CDC_2024_v2.xlsx', converters={'ccn':str,'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
+CDC_2024 = process_cleaned_data(CDC_2024_anomalies, CDC_2024)
+CDC_2024 = CDC_2024.loc[CDC_2024.ccn.isin(lihi5_list.prvdr_num.unique()),:]
+CDC_2024.to_excel(r'lihi5-inclusivity-personal\CDC_address_validation\processed_data\CDC_2024_finalized.xlsx', index = False)
