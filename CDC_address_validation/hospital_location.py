@@ -5,7 +5,7 @@ from geopy.distance import geodesic
 import numpy as np
 import os.path
 sys.path.insert(0, r'C:\Users\owaghmare\Desktop\projects')
-from sql_conn import call_db
+from sql_conn import call_table
 
 
 def preProcess_newData(new_cdc):
@@ -315,9 +315,9 @@ def read_csv(path):
     return pd.read_csv(path, dtype=dtypes, skiprows=[1])
 
 
-lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
-ahd_2022 = call_db('overuse', 'dat__2022ahd')
-CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
+lihi5_list = call_table('lihi_website', 'gref__2022lihi5_genhosplist')
+ahd_2022 = call_table('overuse', 'dat__2022ahd')
+CDC_2023 = call_table('downunder', 'ref__lihi4_hhs_id')
 new_cdc = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
 new_cdc = preProcess_newData(new_cdc)
 # CDC_2024 = create_list(new_cdc, lihi5_list, CDC_2023)

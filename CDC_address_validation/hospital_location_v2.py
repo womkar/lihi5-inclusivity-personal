@@ -5,7 +5,7 @@ from geopy.distance import geodesic
 import numpy as np
 import os.path
 sys.path.insert(0, r'C:\Users\owaghmare\Desktop\projects')
-from sql_conn import call_db
+from sql_conn import call_table
 
 
 def preProcess_newCDC(CDC_2024, lihi5_list):
@@ -151,9 +151,9 @@ def process_cleaned_data(anomalies, CDC_2024):
     return CDC_2024
 
 
-lihi5_list = call_db('lihi_website', 'gref__2022lihi5_genhosplist')
+lihi5_list = call_table('lihi_website', 'gref__2022lihi5_genhosplist')
 # ahd_2022 = call_db('overuse', 'dat__2022ahd')
-CDC_2023 = call_db('downunder', 'ref__lihi4_hhs_id')
+CDC_2023 = call_table('downunder', 'ref__lihi4_hhs_id')
 # CDC_2024_anomalies = pd.read_excel(r'lihi5-inclusivity-personal\CDC_address_validation\CDC_2024_anomalies.xlsx', converters={'ccn':str,'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
 # CDC_2024 = pd.read_csv(r'lihi5-inclusivity-personal\CDC_address_validation\HHS_IDs_20240124.csv', converters={'zip': '{:0>5}'.format, 'fips_code': '{:0>5}'.format})
 # CDC_2024 = preProcess_newCDC(CDC_2024, lihi5_list)
